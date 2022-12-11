@@ -126,14 +126,12 @@ private:
         Query query;
         for (const string& word : SplitIntoWordsNoStop(text)) {
             const QueryWord query_word = ParseQueryWord(word);
-            //if (!query_word.is_stop) {
                 if (query_word.is_minus) {
                     query.minus_words.emplace(query_word.data);
                 }
                 else {
                     query.plus_words.emplace(query_word.data);
                 }
-            //}
         }
         return query;
     }
@@ -146,7 +144,7 @@ private:
         vector<Document> matched_documents;
         map<int, double> document_to_relevance;  //ключ — id найденного документа, а значение — его релевантность
         for (const string& current_word : query.plus_words) {
-            if (!query.minus_words.count(current_word) && word_to_document_freqs_.count(current_word)) {
+            if (word_to_document_freqs_.count(current_word)) {
                 double idf = ComputeWordInverseDocumentFreq(current_word);
                 // tf уже есть в word_to_document_freqs_
                 for (auto& [doc_id, tf] : word_to_document_freqs_.at(current_word)) {
