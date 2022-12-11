@@ -63,7 +63,7 @@ public:
         for (const string& word : words) {
             // в словарь вносится слово, id документа в котором оно найдено и tf этого слова
             // tf увеличится при повторе этого слова
-            word_to_document_freqs_[word][document_id] += 1.0 / words.size(); 
+            word_to_document_freqs_[word][document_id] += 1.0 / words.size();
         }
     }
 
@@ -83,6 +83,12 @@ public:
 private:
 
     double document_count_ = 0.0;  //сразу  double чтобы не менять тип при вычислении IDF
+
+    struct QueryWord {
+        string data;
+        bool is_minus;
+        bool is_stop;
+    };
 
     struct Query {
         set<string> plus_words;
@@ -107,26 +113,41 @@ private:
         return words;
     }
 
+    QueryWord ParseQueryWord(string text) const {
+        bool is_minus = false;
+        if (text[0] == '-') {
+            is_minus = true;
+            text = text.substr(1);
+        }
+        return { text, is_minus, IsStopWord(text) };
+    }
+
     Query ParseQuery(const string& text) const {
         Query query;
         for (const string& word : SplitIntoWordsNoStop(text)) {
-            if (word[0] == '-') {
-                query.minus_words.emplace(word.substr(1));
-            }
-            else if (!query.minus_words.count(word)) {
-                query.plus_words.emplace(word);
-            }
+            const QueryWord query_word = ParseQueryWord(word);
+            //if (!query_word.is_stop) {
+                if (query_word.is_minus) {
+                    query.minus_words.emplace(query_word.data);
+                }
+                else {
+                    query.plus_words.emplace(query_word.data);
+                }
+            //}
         }
-
         return query;
+    }
+
+    double ComputeWordInverseDocumentFreq(const string& word) const {
+        return log(document_count_ / word_to_document_freqs_.at(word).size());
     }
 
     vector<Document> FindAllDocuments(const Query& query) const {
         vector<Document> matched_documents;
         map<int, double> document_to_relevance;  //ключ — id найденного документа, а значение — его релевантность
         for (const string& current_word : query.plus_words) {
-            if (word_to_document_freqs_.count(current_word)) {
-                double idf = log(document_count_ / word_to_document_freqs_.at(current_word).size());
+            if (!query.minus_words.count(current_word) && word_to_document_freqs_.count(current_word)) {
+                double idf = ComputeWordInverseDocumentFreq(current_word);
                 // tf уже есть в word_to_document_freqs_
                 for (auto& [doc_id, tf] : word_to_document_freqs_.at(current_word)) {
                     document_to_relevance[doc_id] += idf * tf;
@@ -134,9 +155,9 @@ private:
             }
         }
 
-        for (const string& minus_word : query.minus_words) {
-            if (word_to_document_freqs_.count(minus_word)) {
-                for (auto& [id, rel] : word_to_document_freqs_.at(minus_word)) {
+        for (const string& current_word : query.minus_words) {
+            if (word_to_document_freqs_.count(current_word)) {
+                for (auto& [id, rel] : word_to_document_freqs_.at(current_word)) {
                     document_to_relevance.erase(id);
                 }
             }
