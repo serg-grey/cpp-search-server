@@ -10,6 +10,7 @@
 using namespace std;
 
 const int MAX_RESULT_DOCUMENT_COUNT = 5;
+const double COMPARISON_ACCURACY_FOR_DOUBLE = 1e-6;
 
 string ReadLine() {
     string s;
@@ -87,12 +88,10 @@ public:
 
         sort(matched_documents.begin(), matched_documents.end(),
             [](const Document& lhs, const Document& rhs) {
-                if (abs(lhs.relevance - rhs.relevance) < 1e-6) {
+                if (abs(lhs.relevance - rhs.relevance) < COMPARISON_ACCURACY_FOR_DOUBLE) {
                     return lhs.rating > rhs.rating;
                 }
-                else {
-                    return lhs.relevance > rhs.relevance;
-                }
+                return lhs.relevance > rhs.relevance;
             });
         if (matched_documents.size() > MAX_RESULT_DOCUMENT_COUNT) {
             matched_documents.resize(MAX_RESULT_DOCUMENT_COUNT);
@@ -110,9 +109,7 @@ public:
 
     vector<Document> FindTopDocuments(const string& raw_query) const {
         // если в запросе только строка, фильтрация будет по дефолтному уловию DocumentStatus::ACTUAL
-        auto matched_documents = FindTopDocuments(raw_query, [](int document_id, DocumentStatus status, int rating) {
-            return status == DocumentStatus::ACTUAL;
-            });
+        auto matched_documents = FindTopDocuments(raw_query, DocumentStatus::ACTUAL);
         return matched_documents;
     }
 
@@ -229,7 +226,8 @@ private:
             }
             const double inverse_document_freq = ComputeWordInverseDocumentFreq(word);
             for (const auto [document_id, term_freq] : word_to_document_freqs_.at(word)) {
-                if (key_mapper(document_id, documents_.at(document_id).status, documents_.at(document_id).rating)) {
+                const auto& document_data = documents_.at(document_id);
+                if (key_mapper(document_id, document_data.status, document_data.rating)) {
                     // если условие из main выполняется для данного документа
                     document_to_relevance[document_id] += term_freq * inverse_document_freq;
                 }
