@@ -413,12 +413,13 @@ void TestSortingByRelevance() {
     const int doc0_id = 11;
     const int doc1_id = 12;
     const int doc2_id = 13;
-    server.AddDocument(doc0_id, "funny white cat"s, DocumentStatus::ACTUAL, { 1, 2, 3 }); //наибольшая релевантность (2 слова)
-    server.AddDocument(doc1_id, "funny fluffy fox"s, DocumentStatus::ACTUAL, { 3, 3, 3 }); //релевантность по 1 слову, больший рейтиннг
+
+    server.AddDocument(doc0_id, "funny fluffy fox"s, DocumentStatus::ACTUAL, { 3, 3, 3 }); //релевантность по 1 слову, больший рейтиннг
+    server.AddDocument(doc1_id, "funny white cat"s, DocumentStatus::ACTUAL, { 1, 2, 3 }); //наибольшая релевантность (2 слова)
     server.AddDocument(doc2_id, "fluffy grey dog"s, DocumentStatus::ACTUAL, { 1, 2, 3 }); //релевантность по 1 слову, меньший рейтинг
     {
         const string query = "fluffy white cat"s;
-        const vector<int>& expected_docs_order = { doc0_id ,doc1_id ,doc2_id };
+        const vector<int>& expected_docs_order = { doc1_id ,doc0_id ,doc2_id };
         const vector< Document> found_docs = server.FindTopDocuments(query); //int id, double relevance, int rating = 0;
         ASSERT_EQUAL_HINT(found_docs.size(), 3u,
             "Wrong number of documents found."s);
@@ -432,7 +433,7 @@ void TestDocumentRatingComputing() {
     const int doc_id = 42;
     const string content = "cat in the city"s;
     const vector<int> ratings = { 1, 2, 3 };
-    const int expected_result = 2;//(1+2+3)/3
+    const int expected_result = (1 + 2 + 3) / 3;
     {
         SearchServer server;
         server.AddDocument(doc_id, content, DocumentStatus::ACTUAL, ratings);
@@ -529,23 +530,57 @@ void TestSearchWithCurrentStatus() {
 }
 
 void TestRelevanceComputing() {
-    const double COMPARISON_ACCURACY_FOR_DOUBLE = 1e-6;
+    const double COMPARISON_ACCURACY = 1e-6;
+    const int doc_count = 3;
     const int doc0_id = 11;
     const int doc1_id = 12;
     const int doc2_id = 13;
-    const vector<int>& expected_docs_order = { doc2_id, doc0_id };
-    const double doc0_expected_relevance = 0.462663;
-    const double doc2_expected_relevance = 0.0506831;
+    const string doc0_content = "a colorful parrot with green wings and red tail is lost"s;
+    const string doc1_content = "a grey hound with black ears is found at the railway station"s;
+    const string doc2_content = "a white cat with long furry tail is found near the red square"s;
+    const string query = "white cat long tail"s;
+    const set<string> query_words = { "white"s, "cat"s, "long"s, "tail"s };
+    const string stop_words = "is are was a an in the with near at"s;
+    const map<int, vector<string>>& docs = {{doc0_id, { "colorful"s, "parrot"s, "green"s, "wings"s, "and"s, "red"s, "tail"s, "lost"s } },
+                                            {doc1_id, { "grey"s, "hound"s, "black"s, "ears"s, "found"s, "railway"s, "station"s }},
+                                            {doc2_id, { "white"s, "cat"s, "long"s, "furry"s, "tail"s, "found"s, "red"s, "square"s }}
+    };
+    map<string, map<int, double>> word_to_document_freqs;// слово запроса, <id документа, частота слова в нём>
+
+    for (const auto& [id, doc] : docs) {
+        const double inv_word_count = 1.0 / doc.size();
+        for (const string& word : doc) {
+            word_to_document_freqs[word][id] += inv_word_count;
+        }
+    }
+
+    map<int, double> document_to_relevance;
+
+    for (const string& word : query_words) {
+        if (word_to_document_freqs.count(word) == 0) {
+            continue;
+        }
+        const double idf = log(doc_count * 1.0 / word_to_document_freqs.at(word).size());
+        for (const auto [doc_id, tf] : word_to_document_freqs.at(word)) {
+            const auto& document_data = docs.at(doc_id);
+            document_to_relevance[doc_id] += tf * idf;            
+        }
+    }
+   
+    const vector<int>& expected_docs_order = { doc2_id, doc0_id };              //ожидаемый порядок найденных документов
+    const double doc0_expected_relevance = document_to_relevance.at(doc2_id);   //ожидаемая релевантность для doc2 ~0.462663
+    const double doc2_expected_relevance = document_to_relevance.at(doc0_id);   //ожидаемая релевантность для doc0 ~0.0506831
     const vector<int> ratings = { 1, 2, 3 };
+
     SearchServer server;
 
-    server.SetStopWords("is are was a an in the with near at"s);
-    server.AddDocument(doc0_id, "a colorful parrot with green wings and red tail is lost"s, DocumentStatus::ACTUAL, ratings);
-    server.AddDocument(doc1_id, "a grey hound with black ears is found at the railway station"s, DocumentStatus::ACTUAL, ratings);
-    server.AddDocument(doc2_id, "a white cat with long furry tail is found near the red square"s, DocumentStatus::ACTUAL, ratings);
+    server.SetStopWords(stop_words);
+    server.AddDocument(doc0_id, doc0_content, DocumentStatus::ACTUAL, ratings);
+    server.AddDocument(doc1_id, doc1_content, DocumentStatus::ACTUAL, ratings);
+    server.AddDocument(doc2_id, doc2_content, DocumentStatus::ACTUAL, ratings);
 
     {
-        const auto found_docs = server.FindTopDocuments("white cat long tail"s);
+        const auto found_docs = server.FindTopDocuments(query);
         ASSERT_EQUAL_HINT(found_docs.size(), 2u,
             "Wrong number of documents found."s);
         const Document& doc0 = found_docs[0];
@@ -553,8 +588,8 @@ void TestRelevanceComputing() {
         const vector<int>& found_docs_order = { doc0.id, doc1.id };
         ASSERT_EQUAL_HINT(found_docs_order, expected_docs_order,
             "Wrong order of documents. Documents should be sorted by relevance. Documents with equal relevance should be sorted by rating."s);
-        ASSERT_HINT(abs(doc0.relevance - doc0_expected_relevance) < COMPARISON_ACCURACY_FOR_DOUBLE, "incorrect result of relevance calculation."s);
-        ASSERT_HINT(abs(doc1.relevance - doc2_expected_relevance) < COMPARISON_ACCURACY_FOR_DOUBLE, "incorrect result of relevance calculation."s);
+        ASSERT_HINT(abs(doc0.relevance - doc0_expected_relevance) < COMPARISON_ACCURACY, "incorrect result of relevance calculation."s);
+        ASSERT_HINT(abs(doc1.relevance - doc2_expected_relevance) < COMPARISON_ACCURACY, "incorrect result of relevance calculation."s);
     }
 }
 
