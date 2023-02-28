@@ -82,18 +82,17 @@ enum class DocumentStatus {
 class SearchServer {
 public:
     template <typename StringContainer>
-    explicit SearchServer(const StringContainer& stop_words) {
-        stop_words_ = MakeUniqueNonEmptyStrings(stop_words);
-        for (const string& stop_word : stop_words_) {
-            if (!IsValidWord(stop_word)) {
-                throw invalid_argument("Недопустимоё стоп-слово, так как содержит спецсимволы"s);
-            }  
+    explicit SearchServer(const StringContainer& stop_words)
+        : stop_words_(MakeUniqueNonEmptyStrings(stop_words)) {
+        if (any_of (stop_words.begin(), stop_words.end(),[](const string& stop_word) { return !IsValidWord(stop_word); }))
+        {
+            throw invalid_argument("Недопустимое стоп-слово, так как содержит спецсимволы"s);
         }
     }
-    
+
     // Invoke delegating constructor from string container
     explicit SearchServer(const string& stop_words_text)
-        : SearchServer(SplitIntoWords(stop_words_text)) 
+        : SearchServer(SplitIntoWords(stop_words_text))
     {
     }
 
@@ -119,7 +118,7 @@ public:
     template <typename DocumentPredicate>
     vector<Document> FindTopDocuments(const string& raw_query, DocumentPredicate document_predicate) const {
         const Query query = ParseQuery(raw_query);
-   
+
         vector<Document> matched_documents = FindAllDocuments(query, document_predicate);
 
         sort(matched_documents.begin(), matched_documents.end(),
@@ -230,12 +229,18 @@ private:
 
     QueryWord ParseQueryWord(string text) const {
         bool is_minus = false;
+        if (!IsValidWord(text)) {
+            throw invalid_argument("Ошибка в поисковом запросе: плюс-слово содержит содержит спецсимволы"s);
+        }
         if (text[0] == '-') {
             if (text.size() == 1 || text[1] == '-') {
                 throw invalid_argument("Ошибка в поисковом запросе (двойной минус или минус без слова)"s);
             }
             is_minus = true;
             text = text.substr(1);
+            if (!IsValidWord(text)) {
+                throw invalid_argument("Ошибка в поисковом запросе: минус-слово содержит спецсимволы"s);
+            }
         }
         return { text, is_minus, IsStopWord(text) };
     }
@@ -250,22 +255,16 @@ private:
         for (const string& word : SplitIntoWords(text)) {
 
             const QueryWord query_word = ParseQueryWord(word);
-            
+
             if (!query_word.is_stop) {
                 if (query_word.is_minus) {
-                    if (!IsValidWord(query_word.data)) {
-                        throw invalid_argument("Ошибка в поисковом запросе: минус-слово содержит содержит спецсимволы"s);
-                    }
                     query.minus_words.insert(query_word.data);
                 }
                 else {
-                    if (!IsValidWord(query_word.data)) {
-                        throw invalid_argument("Ошибка в поисковом запросе: плюс-слово содержит содержит спецсимволы"s);
-                    }
                     query.plus_words.insert(query_word.data);
                 }
-            } 
-        } 
+            }
+        }
         return query;
     }
 
@@ -518,8 +517,8 @@ void TestSearchWithUserPredicate() {
             "Wrong number of documents found."s);
         const Document& doc0 = found_docs[0];
         const Document& doc1 = found_docs[1];
-        ASSERT_EQUAL(doc0.id, 10); //??12
-        ASSERT_EQUAL(doc1.id, 12); //??10
+        ASSERT_EQUAL(doc0.id, 10);
+        ASSERT_EQUAL(doc1.id, 12);
     }
     //предикат с условием по статусу
     {
@@ -682,12 +681,14 @@ int main() {
     }
     try {
         (void)search_server.AddDocument(1, "пушистый кот пушистый хвост"s, DocumentStatus::ACTUAL, { 7, 2, 7 });
-    } catch (invalid_argument& error) {
+    }
+    catch (invalid_argument& error) {
         cout << error.what() << endl;
     }
     try {
         search_server.AddDocument(1, "пушистый пёс и модный ошейник"s, DocumentStatus::ACTUAL, { 1, 2 });
-    } catch (invalid_argument& error) {
+    }
+    catch (invalid_argument& error) {
         cout << error.what() << endl;
     }
     try {
