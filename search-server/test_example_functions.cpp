@@ -1,5 +1,6 @@
 
 #include <cassert>
+#include <cmath>
 #include <iostream>
 #include <map>
 #include <set>
@@ -7,6 +8,10 @@
 #include <string>
 #include <vector>
 
+#include "paginator.h"
+#include "remove_duplicates.h"
+#include "request_queue.h"
+#include "string_processing.h"
 #include "test_example_functions.h"
 
 // -------- Ќачало модульных тестов поисковой системы ----------
@@ -90,7 +95,7 @@ void TestSortingByRelevance() {
     }
 }
 
-void TestDocumentRatingComputing() {    
+void TestDocumentRatingComputing() {
     const int doc_id = 42;
     const std::string content = "cat in the city"s;
     const std::vector<int> ratings = { 1, 2, 3 };
@@ -103,10 +108,10 @@ void TestDocumentRatingComputing() {
             "Wrong number of documents found."s);
         const Document& doc0 = found_docs[0];
         ASSERT_EQUAL(doc0.rating, expected_result);
-    }    
+    }
 }
 
-void TestSearchWithUserPredicate() {    
+void TestSearchWithUserPredicate() {
     SearchServer search_server("in the"s);
     //если результаты не найдены
     {
@@ -142,7 +147,7 @@ void TestSearchWithUserPredicate() {
             "Wrong number of documents found."s);
         const Document& doc0 = found_docs[0];
         ASSERT_EQUAL(doc0.id, 12);
-    }    
+    }
 }
 
 void TestSearchWithCurrentStatus() {
@@ -222,7 +227,7 @@ void TestRelevanceComputing() {
         if (word_to_document_freqs.count(word) == 0) {
             continue;
         }
-        const double idf = log(doc_count * 1.0 / word_to_document_freqs.at(word).size());
+        const double idf = std::log(doc_count * 1.0 / word_to_document_freqs.at(word).size());
         for (const auto [doc_id, tf] : word_to_document_freqs.at(word)) {
             document_to_relevance[doc_id] += tf * idf;
         }
@@ -263,24 +268,24 @@ void TestPaginator() {
 
     int page_size = 2;
     const auto pages = Paginate(search_results, page_size);
-    
+
     ASSERT_HINT(distance(pages.begin(), pages.end()) == page_size, "incorrect result page size."s);
 
     std::vector<Document> results;
     for (auto& page : pages) {
-        results.push_back(*page.begin());
-        if (distance(page.begin(), page.end()) == page_size) { //tckb
-            results.push_back(*(page.begin() + 1));
+        results.emplace_back(*page.begin());
+        if (distance(page.begin(), page.end()) == page_size) {
+            results.emplace_back(*(page.begin() + 1));
         }
     }
 
     ASSERT_EQUAL(results.at(0).id, search_results.at(0).id);
     ASSERT_EQUAL(results.at(1).id, search_results.at(1).id);
     ASSERT_EQUAL(results.at(2).id, search_results.at(2).id);
-    
+
 }
 
-void TestRequestQueue() {
+void Test_RequestQueue() {
     const std::vector<int> ratings = { 1, 2, 3 };
     SearchServer search_server("in the"s);
 
@@ -288,10 +293,10 @@ void TestRequestQueue() {
 
     const int empty_requests = 1439;
     for (int i = 0; i < empty_requests; ++i) {
-        request_queue.AddFindRequest("empty request"s);
+        request_queue.RequestQueue::AddFindRequest("empty request"s);
     }
 
-    ASSERT_EQUAL_HINT(request_queue.GetNoResultRequests(), empty_requests, "Wrong number of empty requests at start"s);
+    ASSERT_EQUAL_HINT(request_queue.RequestQueue::GetNoResultRequests(), empty_requests, "Wrong number of empty requests at start"s);
 
     search_server.AddDocument(10, "cat in the city"s, DocumentStatus::ACTUAL, ratings);
     search_server.AddDocument(11, "fluffy grey dog"s, DocumentStatus::ACTUAL, ratings);
@@ -311,6 +316,24 @@ void TestRequestQueue() {
     ASSERT_EQUAL_HINT(request_queue.GetNoResultRequests(), empty_requests - 2, "Wrong number of empty requests after right query"s);
 }
 
+void Test_RemoveDuplicates() {
+    SearchServer search_server("and with"s);
+    const std::vector<int> ratings = { 1, 2, 3 };
+
+    search_server.AddDocument(1, "cat in the city"s, DocumentStatus::ACTUAL, ratings);
+    search_server.AddDocument(2, "fluffy grey dog"s, DocumentStatus::ACTUAL, ratings);
+    search_server.AddDocument(3, "fluffy grey dog"s, DocumentStatus::ACTUAL, ratings);// дубликат документа 2
+    search_server.AddDocument(4, "funny white cat"s, DocumentStatus::ACTUAL, ratings);
+    search_server.AddDocument(5, "cat in the city"s, DocumentStatus::ACTUAL, ratings);// дубликат документа 1
+    search_server.AddDocument(6, "fluffy grey dog"s, DocumentStatus::ACTUAL, ratings);// дубликат документа 2
+    search_server.AddDocument(7, "funny fluffy fox"s, DocumentStatus::ACTUAL, ratings);
+    search_server.AddDocument(8, "cat in the city"s, DocumentStatus::ACTUAL, ratings);// дубликат документа 1
+
+    ASSERT_EQUAL_HINT(search_server.GetDocumentCount(), 8, "Wrong number of documents before removing duplicates"s);
+    RemoveDuplicates(search_server);
+    ASSERT_EQUAL_HINT(search_server.GetDocumentCount(), 4, "Wrong number of documents after removing duplicates"s);
+}
+
 // ‘ункци€ TestSearchServer €вл€етс€ точкой входа дл€ запуска тестов
 void TestSearchServer() {
     RUN_TEST(TestExcludeStopWordsFromAddedDocumentContent);
@@ -322,7 +345,8 @@ void TestSearchServer() {
     RUN_TEST(TestSearchWithCurrentStatus);
     RUN_TEST(TestRelevanceComputing);
     RUN_TEST(TestPaginator);
-    RUN_TEST(TestRequestQueue);
+    RUN_TEST(Test_RequestQueue);
+    RUN_TEST(Test_RemoveDuplicates);
 
     std::cout << std::endl;
 }

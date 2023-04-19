@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "document.h"
+
 #include "string_processing.h"
 
 using namespace std::string_literals;
@@ -30,7 +31,7 @@ public:
     explicit SearchServer();
 
     void AddDocument(int document_id, const std::string& document, DocumentStatus status, const std::vector<int>& ratings);
-
+    
     template <typename DocumentPredicate>
     std::vector<Document> FindTopDocuments(const std::string& raw_query, DocumentPredicate document_predicate) const;
 
@@ -40,10 +41,17 @@ public:
 
     int GetDocumentCount() const;
 
-    int GetDocumentId(int index) const;
+    std::vector<int>::const_iterator begin() const;
 
-    std::tuple<std::vector<std::string>, DocumentStatus> MatchDocument(const std::string& raw_query,
-        int document_id) const;
+    std::vector<int>::const_iterator end() const;
+
+    const std::map<std::string, double>& GetWordFrequencies(int document_id) const;
+
+    void RemoveDocument(int document_id);
+
+    std::tuple<std::vector<std::string>, DocumentStatus> MatchDocument(const std::string& raw_query, int document_id) const;
+
+
 
 private:
     struct DocumentData {
@@ -55,6 +63,9 @@ private:
     std::map<std::string, std::map<int, double>> word_to_document_freqs_;
     std::map<int, DocumentData> documents_;
     std::vector<int> document_ids_;
+    std::map<int, std::map<std::string, double>> id_to_word_freqs_;
+    std::map<std::string, double> empty_map_;
+
 
     bool IsStopWord(const std::string& word) const;
 
@@ -97,6 +108,7 @@ SearchServer::SearchServer(const StringContainer& stop_words) : stop_words_(Make
 template <typename DocumentPredicate>
 std::vector<Document> SearchServer::FindTopDocuments(const std::string& raw_query,
     DocumentPredicate document_predicate) const {
+
     const auto query = ParseQuery(raw_query);
 
     auto matched_documents = FindAllDocuments(query, document_predicate);
@@ -147,5 +159,6 @@ std::vector<Document> SearchServer::FindAllDocuments(const Query& query, Documen
         matched_documents.push_back(
             { document_id, relevance, documents_.at(document_id).rating });
     }
-    return matched_documents;
+    return matched_documents;    
+
 }

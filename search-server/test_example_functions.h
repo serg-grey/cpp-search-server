@@ -3,9 +3,7 @@
 #include <cassert>
 #include <iostream>
 
-#include "search_server.h"
-#include "paginator.h"
-#include"request_queue.h"
+using namespace std::string_literals;
 
 // -------- шаблонные функции и макросы для тестов ----------
 
@@ -113,7 +111,8 @@ void TestSearchWithUserPredicate();
 void TestSearchWithCurrentStatus();
 void TestRelevanceComputing();
 void TestPaginator();
-void TestRequestQueue();
+void Test_RequestQueue();
+void Test_RemoveDuplicates();
 
 // Функция TestSearchServer является точкой входа для запуска тестов
 void TestSearchServer();
