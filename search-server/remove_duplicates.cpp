@@ -10,9 +10,7 @@ void RemoveDuplicates(SearchServer& search_server) {
             words.emplace(word);
         }
         if (words_to_id.count(words)) {
-            int id_with_word_match = words_to_id.at(words);
-            int higher_id = id_with_word_match > document_id ? id_with_word_match : document_id;
-            duplicate_ids.emplace(higher_id);
+            duplicate_ids.emplace(document_id);
         }
         else {
             words_to_id[words] = document_id;
